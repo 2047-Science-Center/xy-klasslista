@@ -232,6 +232,14 @@ input[type=checkbox]{accent-color:var(--amb)}
 .fields label{font:1.1rem/1 var(--retro);letter-spacing:.06em;color:var(--amb)}
 .fields input{display:block;width:100%;margin-top:6px}
 .nasta{margin:26px 0 0;padding:0;list-style:none;max-width:640px}
+.steg3{list-style:none;margin:26px 0 0;padding:0;max-width:700px;display:grid;gap:10px}
+.steg3 li{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg2);transition:border-color 200ms ease}
+.steg3 li .nr{font:1.8rem/1 var(--retro);color:var(--amb);width:1.2em;flex:none;text-shadow:var(--glow)}
+.steg3 li div{flex:1;min-width:0}
+.steg3 li b{display:block;color:var(--ink);font-weight:600}
+.steg3 li .btn{flex:none}
+.steg3 li.klar{border-color:rgba(122,209,79,.6)}
+.steg3 li.klar .nr{color:#7ad14f;text-shadow:0 0 6px rgba(122,209,79,.5)}
 .nasta li{display:flex;gap:12px;color:var(--ink);font-size:.92rem;margin-bottom:8px}
 .nasta li .nr{font:1.2rem/1.3 var(--retro);color:var(--amb);flex:none;width:1.4em}
 
@@ -338,21 +346,18 @@ input[type=checkbox]{accent-color:var(--amb)}
 <!-- 4 · KLAR -->
 <section class="screen" data-s="3">
   <h1>KLART</h1>
-  <p class="lead">Fyll i skola och datum, spara filen och skicka den till oss.</p>
+  <p class="lead">Fyll i skola och datum. Sen tre steg, så är ni bokade.</p>
   <div class="fields">
     <label>SKOLA<input type="text" id="skola" placeholder="Bjursåsskolan" autocomplete="off"></label>
     <label>KLASS<input type="text" id="klass" placeholder="8B" autocomplete="off"></label>
     <label>BESÖKSDAG<input type="date" id="datum"></label>
   </div>
-  <div class="foot">
-    <button class="btn pri" id="spara">Spara filen</button>
-    <button class="btn ghost" id="skrivUt">Skriv ut grupplistan</button>
-  </div>
-  <ul class="nasta">
-    <li><span class="nr">1</span><span>Skicka filen till oss <span class="mut">[länk till uppladdningen]</span>.</span></li>
-    <li><span class="nr">2</span><span>Ta med den utskrivna grupplistan till besöket. Den är bara till dig och har namn.</span></li>
-    <li><span class="nr">3</span><span>Väl på plats får varje elev ett armband, och sen kör vi.</span></li>
-  </ul>
+  <ol class="steg3">
+    <li id="s1"><span class="nr">1</span><div><b>Spara filen</b><span class="mut sm">Hamnar i Hämtade filer.</span></div><button class="btn pri" id="spara">Spara filen</button></li>
+    <li id="s2"><span class="nr">2</span><div><b>Lägg upp den hos 2047</b><span class="mut sm" id="s2txt">Dra in filen du nyss sparade.</span></div><button class="btn" id="laggUpp" disabled>Lägg upp →</button></li>
+    <li id="s3"><span class="nr">3</span><div><b>Skriv ut grupplistan</b><span class="mut sm">Bara till dig. Ta med den till besöket.</span></div><button class="btn ghost" id="skrivUt">Skriv ut</button></li>
+  </ol>
+  <p class="sm mut" style="margin-top:14px">På besöksdagen får varje elev ett armband, och sen kör vi.</p>
   <div class="tyst"><b>●</b><p><b>Filen innehåller inga namn.</b> Bara testgrupp, sida och tjej/kille för varje plats, plus en kod (till exempel 2A1) som står på din utskrift.</p></div>
 </section>
 </main>
@@ -371,7 +376,10 @@ const STATIONER = ['Förhandlingen', 'Stresstestet', 'Undersökningen', 'Männis
 const STEG = ['LISTA', 'KONTROLL', 'GRUPPER', 'KLAR'];
 const BOK = { flicka: 'T', pojke: 'K', okant: '–' };
 const TK = { flicka: 'Tjej', pojke: 'Kille', okant: 'Vet ej' };
-const VERKTYG = 'klasslista.html 0.2 (prototyp)';
+const VERKTYG = 'klasslista.html 0.3 (prototyp)';
+// "Begär filer"-länken till 2047:s SharePoint-mapp (se xy-arkitektur/XY-KLASSLISTA-SHAREPOINT.md).
+// Tom = knappen visar att länken inte är på plats än. Riggen hämtar filerna därifrån själv.
+const UPPLADDNING_URL = '';
 const REDUCERAD = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---- namnlistor för könsgissning (PROVLISTA – ersätts av SCB:s namnstatistik) ---- */
@@ -906,7 +914,9 @@ function spara() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `xy-${slug(S.besok.skola)}-${slug(S.besok.klass) || 'klass'}-${S.besok.datum || 'datum'}.json`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  S.sparad = true; toast('Sparad. Skicka filen till oss och skriv ut grupplistan.');
+  S.sparad = true; $('s1').classList.add('klar');
+  if (UPPLADDNING_URL) { $('laggUpp').disabled = false; $('laggUpp').classList.add('pri'); toast('Sparad. Lägg upp den hos 2047 i steg 2.'); }
+  else toast('Sparad. Uppladdningen är inte på plats än, så spara filen tills vidare.');
 }
 function skrivUt() {
   const k = koder(), b = S.besok;
@@ -941,7 +951,9 @@ $('nyElev').onkeydown = e => { if (e.key === 'Enter') $('laggTill').click(); };
 $('blanda').onclick = () => { forslag(); renderGrupper(); };
 $('visaKon').onchange = e => { S.visaKon = e.target.checked; renderGrupper(); };
 ['skola', 'klass', 'datum'].forEach(k => $(k).addEventListener('input', e => S.besok[k] = e.target.value));
-$('spara').onclick = spara; $('skrivUt').onclick = skrivUt;
+$('spara').onclick = spara; $('skrivUt').onclick = () => { skrivUt(); $('s3').classList.add('klar'); };
+$('laggUpp').onclick = () => { window.open(UPPLADDNING_URL, '_blank', 'noopener'); $('s2').classList.add('klar'); };
+if (!UPPLADDNING_URL) $('s2txt').textContent = 'Länken läggs in inom kort.';
 window.addEventListener('beforeunload', e => { if (S.elever.length && !S.sparad) { e.preventDefault(); e.returnValue = ''; } });
 
 // Teletype på välkomstrubriken (en gång; inte vid reducerad rörelse)
