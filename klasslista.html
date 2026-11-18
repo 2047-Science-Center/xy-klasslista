@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>X&amp;Y · Valvet – gruppindelning</title>
+<!-- Prototyp 0.2 (2026-11-18). Allt sker i webbläsaren. Filen som sparas innehåller INGA namn.
+     Externt: typsnitten (Google Fonts, samma som stationerna) + SheetJS 0.18.5 (cdnjs) för .xlsx. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+/* Valvets CRT-tema (speglar station-kit/theme/crt.css): bärnsten på nästan svart, VT323 + IBM Plex Mono. */
+:root{
+  --bg:#05100b; --bg2:#08170f; --bg3:#0b1d13;
+  --amb:#ff9500; --amb-rgb:255,149,0; --amb-dim:#b8690f; --amb-mut:#c99a5b;
+  --ink:#f5f5f0; --mint:#35e0d0; --mint-rgb:53,224,208; --red:#ff5a3c;
+  --line:rgba(255,149,0,.26); --line2:rgba(255,149,0,.5);
+  --retro:'VT323','Courier New',ui-monospace,monospace;
+  --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  --ease-out:cubic-bezier(.23,1,.32,1); --ease-io:cubic-bezier(.77,0,.175,1);
+  --crt:1;
+  --glow:0 0 4px rgba(var(--amb-rgb),calc(.35*var(--crt)));
+  --glow2:0 0 9px rgba(var(--amb-rgb),calc(.55*var(--crt)));
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--amb-mut);font:15px/1.6 var(--mono);-webkit-font-smoothing:antialiased}
+/* skanlinjer + vinjett, svagare än på stationerna så att texten går att läsa på en laptop */
+body::before,body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50}
+body::before{background:repeating-linear-gradient(to bottom,transparent 0 2px,rgba(0,0,0,calc(.14*var(--crt))) 3px 4px)}
+body::after{background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,calc(.45*var(--crt))) 100%)}
+::selection{background:rgba(var(--amb-rgb),.35);color:var(--ink)}
+
+.frame{max-width:1280px;margin:16px auto;min-height:calc(100vh - 32px);display:flex;flex-direction:column;
+  border:2px solid var(--amb);border-radius:14px;background:var(--bg);
+  box-shadow:0 0 40px rgba(var(--amb-rgb),calc(.22*var(--crt))),inset 0 0 30px rgba(var(--amb-rgb),calc(.05*var(--crt)))}
+header{display:flex;align-items:center;gap:18px;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{font:2rem/1 var(--retro);color:var(--amb);text-shadow:var(--glow2);letter-spacing:.02em}
+.brand span{color:var(--amb-dim);margin-left:10px;font-size:1.35rem;text-shadow:none}
+.steps{display:flex;gap:4px;font:1.15rem/1 var(--retro);letter-spacing:.06em;margin-left:auto}
+.steps b{font-weight:400;color:var(--amb-dim);padding:4px 8px;border-radius:5px}
+.steps b.on{color:var(--bg);background:var(--amb);box-shadow:var(--glow2)}
+.steps b.done{color:var(--amb)}
+.lokalt{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--mint);text-shadow:0 0 4px rgba(var(--mint-rgb),.35)}
+.lokalt i{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);flex:none}
+
+main{flex:1;padding:34px 22px 28px;position:relative}
+.screen{display:none}
+.screen.on{display:block;animation:in 260ms var(--ease-out)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+
+h1{font:3rem/1.05 var(--retro);color:var(--amb);text-shadow:var(--glow2);margin:0 0 6px;letter-spacing:.01em}
+h1::before{content:"> ";color:var(--amb-dim)}
+.caret{display:inline-block;width:.5em;height:.8em;background:var(--amb);margin-left:4px;vertical-align:-.05em;box-shadow:var(--glow2);animation:caret 1s steps(1) infinite}
+@keyframes caret{50%{opacity:0}}
+.lead{color:var(--ink);font-size:1.02rem;margin:0 0 26px;max-width:640px;text-shadow:0 0 6px rgba(245,245,240,.15)}
+.mut{color:var(--amb-dim)} .sm{font-size:.82rem}
+
+/* knappar */
+.btn{font:1.35rem/1 var(--retro);letter-spacing:.04em;color:var(--amb);background:var(--bg2);border:1px solid var(--amb);
+  border-radius:8px;padding:.5em 1.1em;cursor:pointer;box-shadow:var(--glow);text-shadow:var(--glow);
+  transition:background 120ms ease,transform 140ms var(--ease-out),opacity 120ms ease}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.pri{background:var(--amb);color:var(--bg);text-shadow:none;box-shadow:var(--glow2)}
+.btn.sm{font-size:1.1rem;padding:.4em .9em}
+.btn.ghost{border-color:var(--line2);box-shadow:none}
+@media (hover:hover) and (pointer:fine){
+  .btn:hover:not(:disabled){background:rgba(var(--amb-rgb),.12)}
+  .btn.pri:hover:not(:disabled){background:#ffa733}
+}
+.link{background:none;border:0;color:var(--amb);font:inherit;font-size:.85rem;cursor:pointer;text-decoration:underline;text-underline-offset:3px;padding:0}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:28px}
+.foot .right{margin-left:auto}
+
+/* 1. välkommen */
+.drop{display:block;width:100%;border:1px dashed var(--line2);border-radius:12px;background:var(--bg2);padding:54px 24px;text-align:center;cursor:pointer;
+  font:inherit;color:inherit;transition:border-color 160ms ease,background 160ms ease,transform 160ms var(--ease-out)}
+.drop .big{font:2.1rem/1 var(--retro);color:var(--amb);text-shadow:var(--glow);display:block;margin-bottom:10px}
+.drop.over{border-color:var(--amb);border-style:solid;background:rgba(var(--amb-rgb),.07);transform:scale(1.01)}
+@media (hover:hover) and (pointer:fine){.drop:hover{border-color:var(--amb)}}
+.alt{display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+textarea{width:100%;min-height:150px;margin-top:14px;background:var(--bg2);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:12px;font:.85rem/1.5 var(--mono);resize:vertical}
+.tyst{margin-top:30px;display:flex;gap:12px;align-items:flex-start;max-width:640px;border-left:2px solid var(--mint);padding:4px 0 4px 14px}
+.tyst b{color:var(--mint);font-weight:600}
+.tyst p{margin:0;color:var(--ink);font-size:.9rem}
+
+/* 2. kontrollera */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.tile{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;
+  color:var(--ink);font:inherit;font-size:.9rem;text-align:left;transition:border-color 120ms ease,transform 140ms var(--ease-out)}
+.tile:active{transform:scale(.97)}
+@media (hover:hover) and (pointer:fine){.tile:hover{border-color:var(--amb)}}
+.kb{flex:none;display:inline-grid;place-items:center;min-width:1.7em;height:1.7em;border:1px solid var(--amb);border-radius:5px;
+  font:1.2rem/1 var(--retro);color:var(--ink);box-shadow:var(--glow)}
+.kb.gissad{border-style:dashed;border-color:var(--amb-dim);color:var(--amb);box-shadow:none}
+.kb.okant{border-color:var(--amb-dim);color:var(--amb-dim);box-shadow:none}
+.kb.saknas{border-color:var(--red);color:var(--red);border-style:dashed;box-shadow:none}
+.tile .x{margin-left:auto;color:var(--amb-dim);opacity:0;font-size:1rem;padding:0 2px;transition:opacity 120ms ease}
+@media (hover:hover) and (pointer:fine){.tile:hover .x{opacity:1}}
+@media (hover:none){.tile .x{opacity:.6}}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.78rem;color:var(--amb-dim);margin:0 0 14px;align-items:center}
+.legend .kb{font-size:1rem;min-width:1.5em;height:1.5em}
+.add{display:flex;gap:8px;margin-top:10px}
+input[type=text],input[type=date],select{background:var(--bg2);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:9px 11px;font:inherit;font-size:.9rem}
+input::placeholder{color:var(--amb-dim)}
+details.tolk{margin-top:18px;font-size:.82rem}
+details.tolk summary{cursor:pointer;color:var(--amb-dim)}
+.tbl{overflow-x:auto;margin-top:10px}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--ink);font-size:.8rem}
+th select{font-size:.78rem;padding:4px 6px}
+.masked{color:var(--amb-dim);letter-spacing:.15em}
+
+/* inläsning av bild: skannerlinje över en bärnstenstonad miniatyr */
+.las{display:flex;gap:20px;align-items:center;margin-top:18px;border:1px solid var(--line2);border-radius:12px;padding:16px;background:var(--bg2)}
+.las-bild{position:relative;width:180px;height:130px;flex:none;overflow:hidden;border-radius:8px;border:1px solid var(--amb-dim)}
+.las-bild img{width:100%;height:100%;object-fit:cover;filter:grayscale(1) sepia(1) saturate(3) hue-rotate(-12deg) brightness(.75)}
+.svep{position:absolute;left:0;right:0;top:0;height:2px;background:var(--amb);box-shadow:0 0 12px 3px rgba(var(--amb-rgb),.8);animation:svep 1.4s cubic-bezier(.77,0,.175,1) infinite alternate}
+@keyframes svep{to{transform:translateY(128px)}}
+.las-txt{flex:1;min-width:0}
+.las-txt b{display:block;font:1.6rem/1 var(--retro);color:var(--amb);text-shadow:var(--glow);font-weight:400;margin-bottom:10px}
+.las-bar{height:6px;border:1px solid var(--amb-dim);border-radius:3px;overflow:hidden;margin-bottom:8px}
+.las-bar i{display:block;height:100%;background:var(--amb);box-shadow:var(--glow2);transform-origin:left;transform:scaleX(0);transition:transform 200ms ease-out}
+/* avbockningslistan */
+.lhuvud{display:flex;gap:16px;align-items:center;margin:0 0 8px;padding:0 4px;font-size:.85rem}
+.lhuvud label{display:flex;gap:8px;align-items:center;cursor:pointer;color:var(--ink)}
+.lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:6px}
+.rad{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:5px 8px;transition:border-color 160ms ease,background 160ms ease}
+.rad.klar{border-color:rgba(122,209,79,.45);background:rgba(122,209,79,.05)}
+.rad.osaker{border-color:var(--amb)}
+.bock{flex:none;width:26px;height:26px;border-radius:6px;border:1px solid var(--amb-dim);background:var(--bg);color:var(--bg);font:700 .95rem/1 var(--mono);cursor:pointer;
+  display:grid;place-items:center;transition:background 140ms ease,border-color 140ms ease,transform 140ms var(--ease-out)}
+.bock:active{transform:scale(.92)}
+.rad.klar .bock{background:#7ad14f;border-color:#7ad14f;box-shadow:0 0 8px rgba(122,209,79,.5)}
+.rad .namn{flex:1;min-width:0;background:transparent;border:1px solid transparent;color:var(--ink);padding:5px 6px}
+.rad .namn:hover,.rad .namn:focus{border-color:var(--line2);background:var(--bg)}
+.kolla{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--amb);color:var(--bg);font:700 .75rem/1 var(--mono);box-shadow:var(--glow2)}
+.tk{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden;flex:none}
+.tk button{font:inherit;font-size:.78rem;background:none;border:0;border-right:1px solid var(--line);color:var(--amb-dim);padding:5px 8px;cursor:pointer;transition:background 120ms ease,color 120ms ease}
+.tk button:last-child{border-right:0}
+.tk button.gissad{color:var(--amb);box-shadow:inset 0 0 0 1px var(--amb-dim);background:rgba(var(--amb-rgb),.06)}
+.tk button.on{background:var(--amb);color:var(--bg);font-weight:600}
+.rad .x{background:none;border:0;color:var(--amb-dim);cursor:pointer;font-size:1.05rem;padding:0 4px}
+@media (hover:hover) and (pointer:fine){.rad .x:hover{color:var(--red)}}
+@media (max-width:520px){.lista{grid-template-columns:minmax(0,1fr)}.tk button{padding:5px 6px}}
+
+/* 3. grupper – valvet ovanifrån (speglar xy-simulator/rigg-skiss.svg: korsväggar, portaler, mittpelare, konsol med två skärmar per valv) */
+.tools{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:-8px 0 14px;font-size:.82rem}
+.tools label{display:flex;gap:6px;align-items:center;cursor:pointer;color:var(--amb-dim)}
+.regel{margin-left:auto;font:1.15rem/1 var(--retro);letter-spacing:.08em;color:var(--mint);text-shadow:0 0 6px rgba(var(--mint-rgb),.4)}
+input[type=checkbox]{accent-color:var(--amb)}
+.valv{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:64px;padding:58px 46px;
+  border:1px solid var(--line);border-radius:14px;background:radial-gradient(ellipse at center,#0d1f15 0%,var(--bg) 70%)}
+.valv .k-tl{order:1}.valv .k-tr{order:2}.valv .k-bl{order:3}.valv .k-br{order:4}
+/* väggar: platt kors, toppvy */
+.vagg{position:absolute;background:rgba(201,198,184,.13);border:1px solid rgba(201,198,184,.28);pointer-events:none}
+.vagg.v{left:50%;top:44px;bottom:44px;width:14px;transform:translateX(-50%)}
+.vagg.h{top:50%;left:34px;right:34px;height:14px;transform:translateY(-50%)}
+.pelare{position:absolute;left:50%;top:50%;width:46px;height:46px;transform:translate(-50%,-50%) rotate(45deg);border:2px solid var(--amb);
+  background:var(--bg2);border-radius:7px;box-shadow:var(--glow2);pointer-events:none}
+.pelare::after{content:"";position:absolute;inset:15px;border-radius:50%;background:#b06be0;box-shadow:0 0 10px #b06be0}
+.portal{position:absolute;width:46px;height:30px;pointer-events:none;color:var(--amb)}
+.portal.n{left:50%;top:14px;transform:translateX(-50%)}
+.portal.s{left:50%;bottom:14px;transform:translateX(-50%) rotate(180deg)}
+.portal.e{right:4px;top:50%;transform:translateY(-50%) rotate(90deg)}
+.portal.w{left:4px;top:50%;transform:translateY(-50%) rotate(-90deg)}
+.portal path{filter:drop-shadow(0 0 4px var(--amb))}
+/* en grupp = ett valv */
+.kvad{min-width:0;display:flex;flex-direction:column;align-items:center}
+.pod{width:100%;max-width:440px}
+.pod-h{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.pix{width:36px;height:32px;flex:none;color:var(--amb);filter:drop-shadow(0 0 4px rgba(var(--amb-rgb),.6))}
+.pod-h b{display:block;font:1.75rem/1 var(--retro);color:var(--ink);letter-spacing:.03em;font-weight:400}
+.pod-h small{display:block;font:1.15rem/1 var(--retro);color:var(--amb);letter-spacing:.14em}
+.pod-h .cnt{margin-left:auto;font:1.4rem/1 var(--retro);color:var(--mint);text-shadow:0 0 6px rgba(var(--mint-rgb),.4)}
+.pod-h .cnt.fel{color:var(--red)}
+.pod-st{font-size:.72rem;color:var(--amb-dim);text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px 48px}
+/* konsolen: underglow + två skärmar (sida A / sida B) med tre platser var */
+.konsol{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:12px;border-radius:12px;
+  background:linear-gradient(180deg,rgba(54,145,60,.16),rgba(36,95,40,.10));border:1px solid rgba(54,145,60,.45)}
+.konsol{transition:border-color 220ms ease}
+.konsol.ok{border-color:rgba(122,209,79,.6)}
+.konsol.fel{border-color:rgba(255,90,60,.65)}
+.konsol.ok::before{border-color:rgba(122,209,79,.85)!important;box-shadow:0 0 16px rgba(122,209,79,.28)!important}
+.konsol.fel::before{border-color:var(--red)!important;box-shadow:0 0 16px rgba(255,90,60,.35)!important}
+.konsol::before{transition:border-color 220ms ease,box-shadow 220ms ease;content:"";position:absolute;inset:-6px;border:2px dashed rgba(var(--mint-rgb),.55);border-radius:16px;pointer-events:none;
+  box-shadow:0 0 12px rgba(var(--mint-rgb),.15)}
+.sida{display:flex;flex-direction:column;gap:6px;min-width:0}
+.skarm{display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 10px;border-radius:5px;background:#1b2127;
+  border:1px solid #3b7f6f;font:1.1rem/1 var(--retro);letter-spacing:.1em;color:var(--amb)}
+.sida.B .skarm{color:var(--mint)}
+.skarm i{font-style:normal;font-size:.95rem;color:var(--amb-dim)}
+.plats{min-height:36px;border-radius:7px;min-width:0}
+.plats.tom{border:1px dashed var(--line2)}
+.sida{border-radius:8px;transition:background 120ms ease}
+.sida.mal{background:rgba(var(--amb-rgb),.1);box-shadow:0 0 0 2px var(--amb),var(--glow2)}
+.skarm i.fel{color:var(--red)}
+.tok.over{border-color:var(--red);box-shadow:0 0 8px rgba(255,90,60,.35)}
+.pod-h .cnt.ok{color:#7ad14f;text-shadow:0 0 6px rgba(122,209,79,.45)}
+.tok{display:flex;align-items:center;gap:7px;height:36px;padding:0 8px;background:var(--bg);border:1px solid var(--line2);border-radius:7px;
+  color:var(--ink);font-size:.84rem;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;white-space:nowrap;overflow:hidden;
+  transition:border-color 120ms ease,opacity 120ms ease}
+.tok .kb{font-size:.95rem;min-width:1.45em;height:1.45em}
+.tok .nm{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tok .pin{margin-left:auto;color:var(--mint);font-size:.7rem;text-shadow:0 0 6px var(--mint)}
+.tok.sel{border-color:var(--amb);box-shadow:var(--glow2)}
+.tok.borta{opacity:.18}
+.hidekon .tok .kb{display:none}
+@media (hover:hover) and (pointer:fine){.tok:hover{border-color:var(--amb)}}
+.tok.flyger{position:fixed;left:0;top:0;z-index:60;pointer-events:none;cursor:grabbing;border-color:var(--amb);box-shadow:0 12px 30px rgba(0,0,0,.55),var(--glow2)}
+.tok.in{animation:tokIn 320ms var(--ease-out) both}
+@keyframes tokIn{from{opacity:0;transform:translateY(-10px) scale(.96)}}
+/* demo: "så här byter du plats" */
+.pekare{position:fixed;left:0;top:0;z-index:61;pointer-events:none;width:26px;height:26px;color:var(--ink);filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
+.demotext{position:fixed;left:0;top:0;z-index:61;pointer-events:none;font:1.1rem/1 var(--retro);letter-spacing:.06em;color:var(--bg);background:var(--mint);
+  padding:5px 9px;border-radius:5px;box-shadow:0 0 12px rgba(var(--mint-rgb),.5);white-space:nowrap}
+.varn{color:var(--amb);font-size:.82rem;margin:0 0 12px;border-left:2px solid var(--red);padding-left:10px}
+@media (max-width:900px){
+  .valv{grid-template-columns:minmax(0,1fr);gap:30px;padding:22px 14px}
+  .vagg,.pelare,.portal{display:none}
+  .valv .kvad{order:0!important}
+  .valv .k-tr{order:1!important}.valv .k-br{order:2!important}.valv .k-bl{order:3!important}.valv .k-tl{order:4!important}
+}
+
+/* 4. klar */
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;max-width:700px}
+.fields label{font:1.1rem/1 var(--retro);letter-spacing:.06em;color:var(--amb)}
+.fields input{display:block;width:100%;margin-top:6px}
+.nasta{margin:26px 0 0;padding:0;list-style:none;max-width:640px}
+.nasta li{display:flex;gap:12px;color:var(--ink);font-size:.92rem;margin-bottom:8px}
+.nasta li .nr{font:1.2rem/1.3 var(--retro);color:var(--amb);flex:none;width:1.4em}
+
+.toast{position:fixed;bottom:22px;left:50%;z-index:70;background:var(--bg2);color:var(--ink);border:1px solid var(--amb);box-shadow:var(--glow2);
+  padding:10px 16px;border-radius:8px;font-size:.88rem;opacity:0;transform:translate(-50%,8px);transition:opacity 200ms ease,transform 200ms var(--ease-out);pointer-events:none;max-width:calc(100vw - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+#print{display:none}
+
+@media (max-width:700px){
+  .frame{margin:8px;min-height:calc(100vh - 16px)}
+  header{padding:12px 16px}
+  .steps{margin-left:0;width:100%;justify-content:space-between;font-size:1.1rem}
+  .steps b:not(.on) .t{display:none}
+  main{padding:24px 16px}
+  h1{font-size:2.3rem}
+  .drop{padding:36px 16px}
+}
+@media (prefers-reduced-motion:reduce){
+  :root{--crt:.35}
+  .caret{animation:none}
+  .screen.on,.chip.enter{animation:fadeOnly 200ms ease both}
+  @keyframes fadeOnly{from{opacity:0}}
+}
+@media print{
+  body::before,body::after,.frame,.toast{display:none!important}
+  body{background:#fff;color:#000}
+  #print{display:block;font:11pt/1.4 'IBM Plex Mono',monospace;color:#000}
+  #print h1{font:22pt 'VT323',monospace;margin:0;color:#000;text-shadow:none}
+  #print h1::before{content:""}
+  #print .pg{display:grid;grid-template-columns:1fr 1fr;gap:10pt;margin-top:10pt}
+  #print .pc{border:1px solid #000;border-radius:6pt;padding:8pt;break-inside:avoid}
+  #print h2{font:16pt 'VT323',monospace;margin:0}
+  #print h4{margin:6pt 0 2pt;font-size:9pt;letter-spacing:.08em}
+  #print table td{color:#000;border-bottom:1px solid #ccc;padding:2pt 4pt;font-size:10pt}
+}
+</style>
+</head>
+<body>
+<div class="frame">
+<header>
+  <div class="brand">X&amp;Y<span>VALVET</span></div>
+  <div class="lokalt"><i></i>Inga namn lämnar din dator</div>
+  <nav class="steps" id="steps" aria-label="Steg"></nav>
+</header>
+
+<main>
+<!-- 1 · LISTA -->
+<section class="screen" data-s="0">
+  <h1 id="valkommen">VÄLKOMMEN TILL VALVET<span class="caret"></span></h1>
+  <p class="lead">Klassen delas i fyra testgrupper som roterar mellan valvets fyra stationer. Lägg in klasslistan som du har den, så föreslår vi grupperna.</p>
+  <button class="drop" id="drop" type="button">
+    <span class="big">Dra in klasslistan här</span>
+    <span class="mut sm">Excel, CSV, en skärmdump eller ett foto av listan. Vi tolkar det och du får kontrollera.</span>
+  </button>
+  <input type="file" id="fil" accept=".xlsx,.xls,.ods,.csv,.txt,.tsv,image/*,.heic" hidden>
+  <div class="alt"><button class="link" id="visaKlistra">Klistra in i stället</button><button class="link" id="exempel">Prova med en exempelklass</button></div>
+  <div id="klistraBox" hidden>
+    <textarea id="klistra" placeholder="Ett namn per rad, eller kopiera direkt från Excel."></textarea>
+    <div class="foot" style="margin-top:12px"><button class="btn sm" id="tolka">Läs in</button></div>
+  </div>
+  <div class="las" id="las" hidden>
+    <div class="las-bild"><img id="lasImg" alt=""><i class="svep"></i></div>
+    <div class="las-txt"><b id="lasStatus">LÄSER BILDEN</b><div class="las-bar"><i id="lasBar"></i></div><span class="mut sm">Bilden lämnar inte din dator.</span></div>
+  </div>
+  <div class="tyst"><b>●</b><p><b>Vi sparar inga namn och inga personuppgifter.</b> Listan läses bara här i din webbläsare. Filen du skickar till oss innehåller bara grupperna, utan namn.</p></div>
+</section>
+
+<!-- 2 · KONTROLL -->
+<section class="screen" data-s="1">
+  <h1>STÄMMER DET HÄR?</h1>
+  <p class="lead"><span id="kontrollInfo"></span> Grupperna blandas med tjejer och killar, så vi har gissat utifrån namnet. Bocka av det som stämmer och ändra det som inte gör det.</p>
+  <p class="varn" id="bildVarning" hidden>Listan lästes från en bild. Kontrollera att namnen är rätt stavade, särskilt de som är markerade med ?.</p>
+  <div class="lhuvud"><label><input type="checkbox" id="allaBox"> Bocka av alla</label><span class="mut" id="raknare"></span></div>
+  <div class="lista" id="lista"></div>
+  <div class="add"><input type="text" id="nyElev" placeholder="+ lägg till elev" style="flex:1;max-width:320px"><button class="btn sm ghost" id="laggTill">Lägg till</button></div>
+  <details class="tolk" id="bildDetalj" hidden><summary>Jämför med bilden</summary><img id="bildVisa" alt="Den inlagda bilden" style="max-width:100%;margin-top:10px;border-radius:8px;border:1px solid var(--line2)"></details>
+  <details class="tolk" id="tolkDetalj"><summary>Blev namnen fel? Se hur listan lästes</summary><div id="tolkning"></div></details>
+  <div class="foot">
+    <button class="btn ghost" data-go="0">← Ny lista</button>
+    <button class="btn pri right" id="godkann" disabled>Gör grupper →</button>
+  </div>
+  <p class="sm mut" id="godkannInfo" style="text-align:right;margin:8px 0 0"></p>
+</section>
+
+<!-- 3 · GRUPPER -->
+<section class="screen" data-s="2">
+  <h1>FÖRSLAG KLART</h1>
+  <p class="lead">Så här står klassen i valvet när ni börjar. Dra en elev dit du vill. Grön ram betyder att gruppen är klar.</p>
+  <div class="tools">
+    <button class="btn sm ghost" id="blanda">↻ Blanda om</button>
+    <label><input type="checkbox" id="visaKon" checked> Visa tjej/kille</label>
+    <span class="mut" id="gsum"></span>
+    <span class="regel" id="regel">6 PER GRUPP · 3 PER SIDA</span>
+  </div>
+  <div id="gvarn"></div>
+  <div class="valv" id="valv"></div>
+  <div class="foot">
+    <button class="btn ghost" data-go="1">← Tillbaka</button>
+    <button class="btn pri right" id="tillKlar" data-go="3">Klar →</button>
+  </div>
+  <p class="sm" id="tillKlarInfo" style="text-align:right;margin:8px 0 0;color:var(--red)"></p>
+</section>
+
+<!-- 4 · KLAR -->
+<section class="screen" data-s="3">
+  <h1>KLART</h1>
+  <p class="lead">Fyll i skola och datum, spara filen och skicka den till oss.</p>
+  <div class="fields">
+    <label>SKOLA<input type="text" id="skola" placeholder="Bjursåsskolan" autocomplete="off"></label>
+    <label>KLASS<input type="text" id="klass" placeholder="8B" autocomplete="off"></label>
+    <label>BESÖKSDAG<input type="date" id="datum"></label>
+  </div>
+  <div class="foot">
+    <button class="btn pri" id="spara">Spara filen</button>
+    <button class="btn ghost" id="skrivUt">Skriv ut grupplistan</button>
+  </div>
+  <ul class="nasta">
+    <li><span class="nr">1</span><span>Skicka filen till oss <span class="mut">[länk till uppladdningen]</span>.</span></li>
+    <li><span class="nr">2</span><span>Ta med den utskrivna grupplistan till besöket. Den är bara till dig och har namn.</span></li>
+    <li><span class="nr">3</span><span>Väl på plats får varje elev ett armband, och sen kör vi.</span></li>
+  </ul>
+  <div class="tyst"><b>●</b><p><b>Filen innehåller inga namn.</b> Bara testgrupp, sida och tjej/kille för varje plats, plus en kod (till exempel 2A1) som står på din utskrift.</p></div>
+</section>
+</main>
+</div>
+
+<div id="print"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* X&Y Valvet – gruppindelning, prototyp 0.2
+   lista → kontroll (kön gissat → bekräftat) → grupper (dra-och-släpp) → klar (fil UTAN namn + utskrift MED namn)
+   Format: xy-arkitektur/XY-KLASSLISTA.md §4 (xy-klasslista v2). */
+
+const STATIONER = ['Förhandlingen', 'Stresstestet', 'Undersökningen', 'Människotestet'];  // medsols (XY-ROTATION.md, rotation.stationer=[1,4,3,2]); grupp g startar på [g-1]
+const STEG = ['LISTA', 'KONTROLL', 'GRUPPER', 'KLAR'];
+const BOK = { flicka: 'T', pojke: 'K', okant: '–' };
+const TK = { flicka: 'Tjej', pojke: 'Kille', okant: 'Vet ej' };
+const VERKTYG = 'klasslista.html 0.2 (prototyp)';
+const REDUCERAD = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---- namnlistor för könsgissning (PROVLISTA – ersätts av SCB:s namnstatistik) ---- */
+const FLICKNAMN = `agnes alice alicia alma alva amanda amelia amelie amina amira ana angelica anja anna annie astrid aurora aya ayan azra
+bella cajsa caroline cecilia clara cornelia dagny dalia daniela defne dina dunja ebba ecem edit edith ela eleonora elif elin elina elinor
+elisa elisabeth elise ella ellen ellie ellinor elsa elsie elvira embla emelia emelie emilia emina emma emmy engla ester esther evelina
+fanny fardowsa fatima felicia filippa freja frida gabriella greta hana hanna hannah hawa hedda hedvig hiba hilda hilma hodan ida ifrah
+ilma ines ingrid iris irma isa isabel isabella isabelle jasmin jasmine jenny joanna johanna josefin josefine judit julia juni kajsa
+karin katarina khadija klara kristina lara lea leah leila lejla leyla lilly lily lina linn linnea lisa liv livia louise lova lovisa
+lucia lykke maja majken malak malin malva maria mariam marie marwa maryam matilda meja melissa merima michelle mikaela mila milla minna
+mira moa molly my märta nadia nadja nasra natalie nathalie nellie nelly nicole nina noomi nora nova olga olivia paula rania rebecca
+rebecka reem ronja rosa rut ruth saga sagal sahra salma samira sana sanna sara sarah selin selma sienna signe sigrid siri smilla sofia
+sofie sonja sophia stella stina sumaya svea thea tilda tilde tindra tova tove tuva tyra valentina vanessa vera victoria viktoria vilma
+wilda wilhelmina wilma ylva zahra zara zeynep zoe zoey ajla amra aino helmi lumi sanni`;
+const POJKNAMN = `abdi abdirahman abdullah abdullahi adam adnan adrian ahmad ahmed albin aleksi alexander alfons alfred ali alvin amir anders
+andreas anton armin arman arvid august axel ayub benjamin bilal björn carl casper christian christopher colin conrad daniel dante david
+douglas ebbe edin edvin edwin eetu einar eino elias elis elliot elton emanuel emil emir emre eren eric erik felix filip frank frans
+fredrik gabriel georg gunnar gustaf gustav hamza hampus hannes haris harry hassan henry hjalmar holger hugo husein hussein ibrahim idris
+ilyas isac isak ismail ivan ivar jack jacob jakob jamal jan jens jesper joel johan johannes john jon jonatan jonathan josef juho julian
+kalle karim karl kasper kenan kerem kevin khalid kian konrad lars lennart leo leon leonard levi liam liban linus loui louie lowe lucas
+ludvig lukas magnus mahad mahmoud malte marcus markus martin mathias matteo mattias max mehmet melker melvin michael mikael milo mio
+mohamed mohammad mohammed mohamud morris muhammad muhammed mustafa måns neo nelson nicholas niklas nicklas nils noah noel olle olof
+oliver omar onni oscar oskar otto patrik per peter philip rasmus rickard rune said salah samuel sebastian sigge simon sixten stellan
+sten sture svante sven tarik tariq ted teo theo theodor thomas thor tim timo tobias tom tor ture valdemar valter victor viggo viktor
+vilgot ville vincent väinö walter waldemar wilgot wilhelm wille william wilmer vidar yahya yasin yassin younes yousef youssef yusuf
+zakaria zackarias`;
+const BADA = `alex kim robin charlie love noa sam eli billie tintin mika nour noor luca andrea juno river sky quinn jamie ariel sasha nikita toni jo kai ray sage chris`;
+const set = s => new Set(s.split(/\s+/).filter(Boolean));
+const F_SET = set(FLICKNAMN), P_SET = set(POJKNAMN), B_SET = set(BADA);
+const EFTER_SLUT = /(sson|son|berg|ström|strom|lund|qvist|kvist|gren|holm|dahl|blad|sten|stedt|mark|bäck|ius|ovic|ović|ić|zadeh|oğlu|oglu)$/;
+const norm = s => (s || '').toLowerCase().normalize('NFC').replace(/[éèêë]/g, 'e').replace(/[áàâã]/g, 'a').replace(/[íìîï]/g, 'i')
+  .replace(/[úùûü]/g, 'u').replace(/[óòô]/g, 'o').replace(/ç/g, 'c').split(/[-\s]/)[0];
+function gissa(fn) { const n = norm(fn); if (!n || B_SET.has(n)) return null; const f = F_SET.has(n), p = P_SET.has(n); return f && !p ? 'flicka' : p && !f ? 'pojke' : null; }
+const arForn = t => { const n = norm(t); return F_SET.has(n) || P_SET.has(n) || B_SET.has(n); };
+const arEfter = t => EFTER_SLUT.test((t || '').toLowerCase());
+
+/* ---- tillstånd ---- */
+const S = { skarm: 0, elever: [], tolkning: null, visaKon: true, sparad: true, nid: 1, visad: false, besok: { skola: '', klass: '', datum: '' } };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const byId = id => S.elever.find(e => e.id === id);
+const konAv = e => e.kon || e.gissning || null;     // det som gäller just nu (bekräftat eller gissat)
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2600); }
+
+/* ==================== TOLKNING (logiken från 0.1, testad mot 6 format) ==================== */
+function splitCSV(line, d) { const out = []; let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) { const c = line[i];
+    if (q) { if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true; else if (c === d) { out.push(cur); cur = ''; } else cur += c; }
+  out.push(cur); return out; }
+function tabellFranText(txt) {
+  const lines = txt.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
+  if (!lines.length) return [];
+  const andel = d => lines.filter(l => l.includes(d)).length / lines.length;
+  const d = andel('\t') >= .5 ? '\t' : andel(';') >= .5 ? ';' : andel(',') >= .5 ? ',' : null;
+  return d ? lines.map(l => splitCSV(l, d)) : lines.map(l => [l]);
+}
+const RUBRIK = [
+  [/person.?n|pnr|personnr|födelse|fodelse|ssn|birth|född/i, 'bort'],
+  [/e-?post|mail|telefon|mobil|adress|vårdnad|vardnad|förälder|foralder/i, 'bort'],
+  [/^(kön|kon|gender|sex|juridiskt kön)$/i, 'kon'],
+  [/tilltal|förnamn|fornamn|first|given|^fname$/i, 'fornamn'],
+  [/efternamn|last.?name|surname|family|^lname$/i, 'efternamn'],
+  [/namn|^elev$|^elever$|name|^student/i, 'helnamn'],
+  [/^(klass|class)$/i, 'klass'],
+  [/klass|class|grupp|mentor|skola|årskurs|arskurs|id$/i, 'bort'],
+];
+function rollFranRubrik(c) { c = (c || '').trim(); if (!c || c.length > 40) return null;
+  if (/efternamn/i.test(c) && /förnamn|fornamn|tilltal/i.test(c)) return 'helnamn';
+  for (const [re, r] of RUBRIK) if (re.test(c)) return r; return null; }
+function gissaKolumn(vals) { vals = vals.filter(Boolean); if (!vals.length) return 'bort';
+  const r = re => vals.filter(v => re.test(v)).length / vals.length;
+  if (r(/^\d{6}(\d{2})?[-+ ]?\d{4}$/) > .4) return 'pnr';
+  if (r(/@/) > .4) return 'bort';
+  if (r(/^(f|p|m|k|flicka|pojke|kvinna|man|tjej|kille|girl|boy|female|male)$/i) > .7) return 'kon';
+  if (r(/^\d{1,2}\s?[a-zåäö]{1,3}$/i) > .7) return 'klass';
+  if (r(/\d/) > .4) return 'bort';
+  if (r(/\s|,/) > .5) return 'helnamn';
+  return 'namnord'; }
+function analysera(rader, kalla) {
+  rader = rader.map(r => r.map(c => String(c ?? '').replace(/\s+/g, ' ').trim())).filter(r => r.some(Boolean));
+  if (!rader.length) return null;
+  const W = Math.max(...rader.map(r => r.length)); rader = rader.map(r => { const x = r.slice(); while (x.length < W) x.push(''); return x; });
+  let hi = -1, roller = null;
+  for (let i = 0; i < Math.min(6, rader.length); i++) { const rr = rader[i].map(rollFranRubrik);
+    if (rr.some(x => x === 'fornamn' || x === 'efternamn' || x === 'helnamn') && (rader[i].filter(Boolean).length >= 2 || W === 1) && !rader[i].some(c => /\d/.test(c))) { hi = i; roller = rr; break; } }
+  const rubriker = hi >= 0 ? rader[hi] : null;
+  let data = hi >= 0 ? rader.slice(hi + 1) : rader;
+  if (hi < 0 && W >= 2) { const cnt = data.map(r => r.filter(Boolean).length); const typ = cnt.slice().sort((a, b) => a - b)[Math.floor(cnt.length / 2)];
+    data = data.filter((r, i) => !(i < 3 && cnt[i] < typ)); }
+  roller = Array.from({ length: W }, (_, c) => { const g = gissaKolumn(data.map(r => r[c])); if (g === 'pnr') return 'pnr';
+    const fr = roller ? roller[c] : null; if (fr) return fr; if (roller) return 'bort'; return g; });
+  const ord = roller.map((r, i) => r === 'namnord' ? i : -1).filter(i => i >= 0);
+  if (ord.length) { let harF = roller.includes('fornamn') || roller.includes('helnamn'), harE = roller.includes('efternamn');
+    const p = ord.map(i => { const v = data.map(r => r[i]).filter(Boolean); return (v.filter(arForn).length - v.filter(arEfter).length) / Math.max(1, v.length); });
+    for (const [i] of ord.map((i, k) => [i, p[k]]).sort((a, b) => b[1] - a[1])) {
+      if (!harF) { roller[i] = 'fornamn'; harF = true; } else if (!harE) { roller[i] = 'efternamn'; harE = true; } else roller[i] = 'bort'; } }
+  if (!roller.some(r => r === 'fornamn' || r === 'helnamn')) { const i = roller.indexOf('efternamn'); if (i >= 0) roller[i] = 'helnamn'; }
+  const t = { rader: data, rubriker, roller, kalla, ordning: 'fornamn_forst' }; t.ordning = gissaOrdning(t); return t;
+}
+function gissaOrdning(t) { const i = t.roller.indexOf('helnamn'); if (i < 0) return 'fornamn_forst';
+  if (t.rubriker && /efternamn.*(förnamn|fornamn)/i.test(t.rubriker[i])) return 'efternamn_forst';
+  let p = 0; for (const r of t.rader) { const v = r[i]; if (!v || v.includes(',')) continue; const tok = v.split(' '); if (tok.length < 2) continue;
+    const a = tok[0], b = tok[tok.length - 1]; p += (arForn(a) ? 1 : 0) - (arForn(b) ? 1 : 0) + (arEfter(b) ? 1 : 0) - (arEfter(a) ? 1 : 0); }
+  return p >= 0 ? 'fornamn_forst' : 'efternamn_forst'; }
+function snygga(s) { s = (s || '').replace(/\s+/g, ' ').trim();
+  if (s && (s === s.toUpperCase() || s === s.toLowerCase())) s = s.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()); return s; }
+function delaHelnamn(s, ordning) { s = (s || '').trim(); if (!s) return ['', ''];
+  if (s.includes(',')) { const [e, f] = s.split(','); return [f.trim().split(' ')[0] || '', e.trim()]; }
+  const tok = s.split(' '); if (tok.length === 1) return [tok[0], ''];
+  return ordning === 'efternamn_forst' ? [tok[1], tok[0]] : [tok[0], tok[tok.length - 1]]; }
+function konFranCell(v) { v = (v || '').trim().toLowerCase();
+  return /^(f|k|flicka|kvinna|tjej|girl|female)$/.test(v) ? 'flicka' : /^(p|m|pojke|man|kille|boy|male)$/.test(v) ? 'pojke' : null; }
+function byggElever(t) {
+  const ci = r => t.roller.indexOf(r); const iF = ci('fornamn'), iE = ci('efternamn'), iH = ci('helnamn'), iK = ci('kon'), iC = ci('klass');
+  const ut = [], sett = new Set(), klasser = {};
+  for (const r of t.rader) { let fn = iF >= 0 ? r[iF] : '', en = iE >= 0 ? r[iE] : '';
+    if (iH >= 0 && (!fn || !en)) { const [a, b] = delaHelnamn(r[iH], t.ordning); fn = fn || a; en = en || b; }
+    fn = snygga((fn || '').split(' ')[0]); en = snygga(en);
+    if (!fn || /\d/.test(fn + en)) continue;
+    const k = (fn + ' ' + en).toLowerCase(); if (sett.has(k)) continue; sett.add(k);
+    if (iC >= 0 && r[iC]) klasser[r[iC]] = (klasser[r[iC]] || 0) + 1;
+    const lista = iK >= 0 ? konFranCell(r[iK]) : null;
+    ut.push({ fornamn: fn, efternamn: en, gissning: lista || gissa(fn), osaker: !!(t.osakra && t.osakra.has(r.join(' '))) }); }
+  const klass = Object.entries(klasser).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  return { ut, klass };
+}
+function satVisningsnamn() { const grp = {}; S.elever.forEach(e => (grp[e.fornamn.toLowerCase()] ||= []).push(e));
+  for (const l of Object.values(grp)) { for (let k = 1; k <= 3; k++) { l.forEach(e => e.namn = e.efternamn ? `${e.fornamn} ${e.efternamn.slice(0, k)}.` : e.fornamn);
+      if (new Set(l.map(e => e.namn.toLowerCase())).size === l.length) break; }
+    const s = {}; l.forEach(e => { const n = e.namn.toLowerCase(); s[n] = (s[n] || 0) + 1; if (s[n] > 1) e.namn += ` (${s[n]})`; }); } }
+const nyElev = o => ({ id: 'e' + S.nid++, fornamn: o.fornamn, efternamn: o.efternamn || '', namn: '', gissning: o.gissning ?? gissa(o.fornamn), osaker: !!o.osaker, ok: false, kon: null, grupp: null, sida: null, plats: null, last: false });
+
+function anvand(t, kalla = 'fil') {
+  const fel = () => toast(kalla === 'bild' ? 'Hittade inga namn i bilden. Prova en skarpare bild eller klistra in.' : 'Hittade inga namn. Prova att klistra in ett namn per rad.');
+  if (!t || !t.rader.length) return fel();
+  const { ut, klass } = byggElever(t);
+  if (!ut.length) return fel();
+  S.kalla = kalla; if (kalla !== 'bild' && S.bildUrl) { URL.revokeObjectURL(S.bildUrl); S.bildUrl = null; }
+  S.tolkning = t; S.nid = 1; S.elever = ut.map(nyElev); satVisningsnamn(); S.sparad = false; S.visad = false;
+  if (klass && !S.besok.klass) S.besok.klass = klass;
+  $('klistra').value = '';
+  ga(1);
+}
+async function lasFil(f) {
+  const n = f.name.toLowerCase();
+  if (n.endsWith('.json')) { toast('Det där är en sparad gruppfil. Den har inga namn och kan inte öppnas här.'); return; }
+  if ((f.type || '').startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|heic|heif|tiff?)$/.test(n)) return lasBild(f);
+  try {
+    let rader;
+    if (/\.(xlsx|xls|ods)$/.test(n)) {
+      if (!window.XLSX) { toast('Excel-läsaren laddades inte (inget nät?). Spara som CSV eller klistra in.'); return; }
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' }); let best = [];
+      for (const sn of wb.SheetNames) { const r = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' }); if (r.length > best.length) best = r; }
+      rader = best;
+    } else { const buf = await f.arrayBuffer(); let txt;
+      try { txt = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { txt = new TextDecoder('windows-1252').decode(buf); }
+      rader = tabellFranText(txt); }
+    anvand(analysera(rader, f.name));
+  } catch (err) { console.error(err); toast('Filen gick inte att läsa.'); }
+}
+
+/* ---- bild/foto → text (Tesseract.js, körs HELT i webbläsaren; laddas först när en bild läggs in) ---- */
+let OCR = null;
+const laddaOcr = () => OCR ||= new Promise((ok, fel) => { if (window.Tesseract) return ok();
+  const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+  sc.onload = ok; sc.onerror = () => { OCR = null; fel(new Error('ocr')); }; document.head.appendChild(sc); });
+const HUVUDRAD = /^(namn|elev|elever|tilltalsnamn|kön|e-?post|mentor)\b|\b(förnamn|efternamn|personnummer)\b|klasslista|utskrift|sida \d/i;
+function stadaOcrRad(t) {      // behåll bara ord med bokstäver; släng siffror (personnummer, datum), e-post och skräptecken
+  return t.replace(/[|_~*•·"“”«»<>\[\]{}()=+#]/g, ' ').split(/\s+/)
+    .filter(w => w && !/\d/.test(w) && !w.includes('@'))
+    .map(w => w.replace(/^[^\p{L}]+|[^\p{L},.\-]+$/gu, ''))
+    .filter(w => /\p{L}{2,}/u.test(w))
+    .join(' ').replace(/\s+,/g, ',').replace(/,$/, '').trim();
+}
+// Telefonfoto (HEIC från iPhone) → JPEG i webbläsaren. heic2any laddas först när det behövs; bilden lämnar inte datorn.
+let HEIC = null;
+const laddaHeic = () => HEIC ||= new Promise((ok, fel) => { if (window.heic2any) return ok();
+  const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+  sc.onload = ok; sc.onerror = () => { HEIC = null; fel(new Error('heic')); }; document.head.appendChild(sc); });
+const arHeic = f => /image\/hei[cf]/i.test(f.type || '') || /\.hei[cf]$/i.test(f.name || '');
+// Foton (stora bilder): krymp till max 2400 px, gör grått och lägg på lätt oskärpa. Oskärpan tar bort moirén när man fotar en skärm,
+// som annars gör att läsaren bara ser brus (testat på ett iPhone-foto av Excel: 0 → 22 av 24 namn). Skärmdumpar lämnas orörda.
+async function forbered(f) {
+  const img = await new Promise((ok, fel) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fel; i.src = URL.createObjectURL(f); });
+  const W = img.naturalWidth, H = img.naturalHeight; URL.revokeObjectURL(img.src);
+  if (Math.max(W, H) < 2000) return f;
+  const k = Math.min(1, 2400 / Math.max(W, H)), c = document.createElement('canvas');
+  c.width = Math.round(W * k); c.height = Math.round(H * k);
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, c.width, c.height);
+  const id = x.getImageData(0, 0, c.width, c.height), d = id.data, w = c.width, h = c.height;
+  let g = new Float32Array(w * h); for (let i = 0; i < w * h; i++) g[i] = .299 * d[i * 4] + .587 * d[i * 4 + 1] + .114 * d[i * 4 + 2];
+  const box = (src, horis) => { const ut = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) { const i = y * w + xx;
+      ut[i] = horis ? (src[i - (xx > 0)] + src[i] + src[i + (xx < w - 1)]) / 3 : (src[i - (y > 0) * w] + src[i] + src[i + (y < h - 1) * w]) / 3; }
+    return ut; };
+  for (let v = 0; v < 2; v++) g = box(box(g, true), false);      // två varv 3×3 ≈ oskärpa 1 px
+  for (let i = 0; i < w * h; i++) d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g[i];
+  x.putImageData(id, 0, 0);
+  return await new Promise(ok => c.toBlob(ok, 'image/jpeg', .92));
+}
+async function lasBild(f) {
+  const box = $('las'), bar = $('lasBar'), stat = $('lasStatus');
+  box.hidden = false; bar.style.transform = 'scaleX(.02)'; $('lasImg').removeAttribute('src');
+  try {
+    if (arHeic(f)) {
+      stat.textContent = 'KONVERTERAR FOTOT';
+      await laddaHeic();
+      const ut = await heic2any({ blob: f, toType: 'image/jpeg', quality: .9 });
+      f = Array.isArray(ut) ? ut[0] : ut;
+    }
+    stat.textContent = 'FÖRBEREDER BILDEN';
+    f = await forbered(f);
+    if (S.bildUrl) URL.revokeObjectURL(S.bildUrl);
+    S.bildUrl = URL.createObjectURL(f); $('lasImg').src = S.bildUrl;
+    stat.textContent = 'LÄSER BILDEN'; bar.style.transform = 'scaleX(.06)';
+    await laddaOcr();
+    const w = await Tesseract.createWorker('swe', 1, {
+      langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/swe@1.0.0/4.0.0_best_int',
+      logger: m => { if (m.status === 'recognizing text') { bar.style.transform = `scaleX(${.15 + .85 * m.progress})`; stat.textContent = `LÄSER BILDEN … ${Math.round(m.progress * 100)} %`; }
+        else if (/load|init/.test(m.status)) stat.textContent = 'STARTAR LÄSAREN'; } });
+    const { data } = await w.recognize(f); await w.terminate();
+    // Städa: bara ord som ser ut som namn (Stor bokstav + små, eller VERSALER om hela listan är i versaler).
+    const allaOrd = (data.lines || []).flatMap(l => stadaOcrRad(l.text).split(' ')).filter(Boolean);
+    const versaler = allaOrd.filter(w => /^\p{Lu}{3,}$/u.test(w)).length > allaOrd.length * .5;
+    const namnOrd = w => /^\p{Lu}\p{Ll}[\p{Ll}\-'’.]*$/u.test(w) || (versaler && /^\p{Lu}{2,}[\p{Lu}\-]*$/u.test(w)) || /^\p{Lu}\p{Ll}+-\p{Lu}\p{Ll}+$/u.test(w);
+    let kand = [];
+    for (const l of data.lines || []) { const t = stadaOcrRad(l.text);
+      if (!t || HUVUDRAD.test(t)) continue;
+      const ord = t.split(' ').map(w => w.replace(/,$/, '')).filter(namnOrd);
+      if (ord.length) kand.push({ ord, conf: l.confidence }); }
+    // Samma rad tre gånger eller fler (t.ex. "Karin Ek" i mentorskolumnen) är inte elever. Ord som står på nästan varje rad är en kolumn.
+    const radFrekv = {}; kand.forEach(k => { const n = k.ord.join(' ').toLowerCase(); radFrekv[n] = (radFrekv[n] || 0) + 1; });
+    kand = kand.filter(k => radFrekv[k.ord.join(' ').toLowerCase()] < 3);
+    if (kand.length >= 6) { const frekv = {}; kand.forEach(k => new Set(k.ord.map(w => w.toLowerCase())).forEach(w => frekv[w] = (frekv[w] || 0) + 1));
+      kand.forEach(k => k.ord = k.ord.filter(w => frekv[w.toLowerCase()] < kand.length * .5)); }
+    const rader = [], osakra = new Set();
+    for (const k of kand) { const t = k.ord.join(' ').trim();
+      if (!t || k.ord.length > 4 || (k.ord.length === 1 && (t.length < 3 || k.conf < 25))) continue;
+      rader.push([t]);
+      // Säkerheten gäller hela raden (inkl. radnummer-brus), så den är låg även för rätt namn. Flagga bara det som troligen är fel.
+      if (k.conf < 50 || (k.conf < 70 && !k.ord.some(arForn))) osakra.add(t); }
+    box.hidden = true;
+    const t = analysera(rader, f.name || 'foto'); if (t) t.osakra = osakra;
+    anvand(t, 'bild');
+  } catch (err) { console.error(err); box.hidden = true;
+    toast('Bilden gick inte att läsa. Prova att ta en skärmdump eller klistra in namnen.'); }
+}
+
+/* ==================== GRUPPFÖRSLAG ==================== */
+// 4 grupper, storlekar skiljer högst 1; sida A = ceil(n/2), B = floor(n/2). Könsbalans per grupp och sida. Nålade elever står kvar.
+function storlekar(n) { const b = Math.floor(n / 4), x = n % 4; return [0, 1, 2, 3].map(g => { const s = b + (g < x ? 1 : 0); return { tot: s, A: Math.ceil(s / 2), B: Math.floor(s / 2) }; }); }
+function forslag() {
+  const E = S.elever, n = E.length; if (!n) return;
+  const z = storlekar(n), kon = Object.fromEntries(E.map(e => [e.id, konAv(e)]));
+  const tot = { flicka: E.filter(e => kon[e.id] === 'flicka').length, pojke: E.filter(e => kon[e.id] === 'pojke').length };
+  const kostnad = a => { const c = {}; let s = 0;
+    a.forEach((p, id) => { const k = kon[id]; if (k !== 'flicka' && k !== 'pojke') return; c[p[0] + k] = (c[p[0] + k] || 0) + 1; c[p[0] + p[1] + k] = (c[p[0] + p[1] + k] || 0) + 1; });
+    for (let g = 1; g <= 4; g++) for (const k of ['flicka', 'pojke']) { const fg = c[g + k] || 0;
+      s += 2 * (fg - tot[k] * z[g - 1].tot / n) ** 2 + .8 * ((c[g + 'A' + k] || 0) - fg * z[g - 1].A / Math.max(1, z[g - 1].tot)) ** 2; }
+    return s; };
+  const blanda = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  let bast = null, bc = Infinity;
+  for (let r = 0; r < 8; r++) {
+    const pl = []; z.forEach((s, gi) => { for (let k = 0; k < s.A; k++) pl.push([gi + 1, 'A']); for (let k = 0; k < s.B; k++) pl.push([gi + 1, 'B']); });
+    const a = new Map(), fria = [];
+    for (const e of E) { if (e.last && e.grupp) { const i = pl.findIndex(p => p[0] === e.grupp && p[1] === e.sida); if (i >= 0) { a.set(e.id, pl.splice(i, 1)[0]); continue; } } fria.push(e.id); }
+    blanda(pl); blanda(fria); fria.forEach((id, i) => a.set(id, pl[i]));
+    let c = kostnad(a);
+    if (fria.length > 1) for (let it = 0; it < 2500; it++) { const x = fria[Math.random() * fria.length | 0], y = fria[Math.random() * fria.length | 0];
+      const p = a.get(x), q = a.get(y); if (p[0] === q[0] && p[1] === q[1]) continue;
+      a.set(x, q); a.set(y, p); const c2 = kostnad(a); if (c2 <= c) c = c2; else { a.set(x, p); a.set(y, q); } }
+    if (c < bc) { bc = c; bast = new Map(a); }
+  }
+  E.forEach(e => { const p = bast.get(e.id); e.grupp = p[0]; e.sida = p[1]; });
+  for (let g = 1; g <= 4; g++) for (const s of ['A', 'B']) {           // platsnummer: nålade behåller sin plats, övriga fyller luckorna
+    const l = E.filter(e => e.grupp === g && e.sida === s), tagna = new Set(l.filter(e => e.last && e.plats != null).map(e => e.plats)); let i = 0;
+    l.filter(e => !(e.last && e.plats != null)).forEach(e => { while (tagna.has(i)) i++; e.plats = i++; }); }
+}
+
+/* ==================== RENDERING ==================== */
+function ga(i) {
+  if (i >= 1 && !S.elever.length) i = 0;
+  if (i === 2 && S.elever.some(e => !e.grupp)) forslag();
+  if (i === 3 && !grupperOk()) { toast('Alla ramar måste vara gröna först.'); i = 2; }
+  if (i === 3) { $('skola').value = S.besok.skola; $('klass').value = S.besok.klass; $('datum').value = S.besok.datum; }
+  S.skarm = i;
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', +s.dataset.s === i));
+  render(); window.scrollTo({ top: 0 });
+}
+function render() {
+  $('steps').innerHTML = STEG.map((t, i) => `<b class="${i === S.skarm ? 'on' : i < S.skarm ? 'done' : ''}">${String(i + 1).padStart(2, '0')}<span class="t"> ${t}</span></b>`).join('');
+  if (S.skarm === 1) renderKontroll();
+  if (S.skarm === 2) renderGrupper();
+}
+
+function renderKontroll() {
+  const E = S.elever, klara = E.filter(e => e.ok).length;
+  $('kontrollInfo').textContent = `${E.length} elever hittades${S.kalla === 'bild' ? ' i bilden' : ''}.`;
+  $('bildVarning').hidden = S.kalla !== 'bild';
+  $('bildDetalj').hidden = !S.bildUrl; if (S.bildUrl) $('bildVisa').src = S.bildUrl;
+  $('tolkDetalj').hidden = S.kalla === 'bild';
+  $('lista').innerHTML = E.map(e => { const k = konAv(e), os = e.osaker && !e.ok;
+    return `<div class="rad${e.ok ? ' klar' : ''}${os ? ' osaker' : ''}" data-id="${e.id}">
+      <button class="bock" aria-pressed="${e.ok}" title="${e.ok ? 'Avbockad' : 'Bocka av'}">${e.ok ? '✓' : ''}</button>
+      <input class="namn" type="text" value="${esc(e.namn)}" aria-label="Namn">${os ? '<span class="kolla" title="Svårläst i bilden. Kolla stavningen.">?</span>' : ''}
+      <span class="tk">${['flicka', 'pojke', 'okant'].map(x => `<button data-k="${x}" class="${k === x ? (e.kon ? 'on' : 'gissad') : ''}">${TK[x]}</button>`).join('')}</span>
+      <button class="x" title="Ta bort">×</button></div>`; }).join('');
+  $('raknare').textContent = `${klara} av ${E.length} avbockade`;
+  $('allaBox').checked = E.length > 0 && klara === E.length;
+  $('godkann').disabled = !E.length || klara !== E.length;
+  $('godkannInfo').textContent = klara === E.length ? '' : 'Bocka av alla för att gå vidare.';
+  $('lista').querySelectorAll('.rad').forEach(rad => { const e = byId(rad.dataset.id);
+    rad.querySelector('.bock').onclick = () => { e.ok = !e.ok; if (e.ok) e.kon = e.kon || e.gissning || 'okant'; S.sparad = false; renderKontroll(); };
+    rad.querySelectorAll('.tk button').forEach(b => b.onclick = () => { e.kon = b.dataset.k; e.ok = true; S.sparad = false; renderKontroll(); });
+    rad.querySelector('.x').onclick = () => { S.elever = S.elever.filter(x => x !== e); S.sparad = false; renderKontroll(); };
+    rad.querySelector('.namn').onchange = ev => { const v = ev.target.value.trim(); if (!v) { ev.target.value = e.namn; return; }
+      e.namn = v; e.fornamn = v.split(' ')[0]; if (!e.kon) e.gissning = gissa(e.fornamn); e.osaker = false; S.sparad = false; renderKontroll(); };
+  });
+  renderTolkning();
+}
+function renderTolkning() {
+  const t = S.tolkning, box = $('tolkning'); if (!t) { box.innerHTML = ''; return; }
+  const R = { fornamn: 'Förnamn', efternamn: 'Efternamn', helnamn: 'Hela namnet', kon: 'Kön', klass: 'Klass', bort: 'Används inte' };
+  const sel = (r, i) => r === 'pnr' ? '<span class="masked">PERSONNR · tas bort</span>' :
+    `<select data-kol="${i}">${Object.keys(R).map(k => `<option value="${k}"${k === r ? ' selected' : ''}>${R[k]}</option>`).join('')}</select>`;
+  const cell = (v, r) => r === 'pnr' || (r === 'bort' && /\d{4}/.test(v)) ? '<span class="masked">••••••</span>' : esc(v);
+  box.innerHTML = `<div class="tbl"><table><tr>${t.roller.map((r, i) => `<th>${sel(r, i)}</th>`).join('')}</tr>
+    ${t.rader.slice(0, 4).map(r => `<tr>${r.map((c, i) => `<td>${cell(c, t.roller[i])}</td>`).join('')}</tr>`).join('')}</table></div>
+    ${t.roller.includes('helnamn') ? `<p class="row" style="margin:10px 0 0">Namnen står som
+      <label><input type="radio" name="ordn" value="fornamn_forst"${t.ordning === 'fornamn_forst' ? ' checked' : ''}> Förnamn Efternamn</label>
+      <label><input type="radio" name="ordn" value="efternamn_forst"${t.ordning === 'efternamn_forst' ? ' checked' : ''}> Efternamn Förnamn</label></p>` : ''}`;
+  const omlas = () => { anvand(t); $('tolkDetalj').open = true; };
+  box.querySelectorAll('select[data-kol]').forEach(s => s.onchange = () => { const i = +s.dataset.kol;
+    if (s.value !== 'bort') t.roller = t.roller.map((r, k) => k !== i && r === s.value ? 'bort' : r); t.roller[i] = s.value; omlas(); });
+  box.querySelectorAll('input[name=ordn]').forEach(r => r.onchange = () => { t.ordning = r.value; omlas(); });
+}
+
+/* ---- GRUPPER: valvet ovanifrån. Varje grupp står i sitt startvalv; fasta platser (6 = 3+3), byte = dra till en annan elev. ---- */
+const GRUPPNAMN = ['MUS', 'KATT', 'HUND', 'FÅGEL'];                         // test_groups i DB (seed.sql)
+const KVADRANT = { 1: 'k-tr', 2: 'k-br', 3: 'k-bl', 4: 'k-tl' };          // startvalv i riggritningen, medsols
+const PIX = {                                                             // 9×8 pixeldjur, VT323-känsla
+  MUS:   ['.##...##.', '####.####', '####.####', '.#######.', '.#.###.#.', '.#######.', '..#####..', '...#.#...'],
+  KATT:  ['#.......#', '##.....##', '###...###', '#########', '##.###.##', '#########', '.###.###.', '..#####..'],
+  HUND:  ['.##...##.', '###...###', '#########', '##.###.##', '#########', '#..#.#..#', '...###...', '....#....'],
+  'FÅGEL': ['...###...', '..#####..', '..#.####.', '..########', '.#######.', '#######..', '..#..#...', '.##.##...'],
+};
+const pix = n => `<svg class="pix" viewBox="0 0 10 8" shape-rendering="crispEdges" aria-hidden="true">${PIX[n].map((r, y) => [...r].map((c, x) => c === '#' ? `<rect x="${x}" y="${y}" width="1" height="1" fill="currentColor"/>` : '').join('')).join('')}</svg>`;
+const PORTAL = d => `<svg class="portal ${d}" viewBox="0 0 46 30" aria-hidden="true"><rect x="1" y="1" width="44" height="9" rx="2" fill="rgba(54,145,60,.35)" stroke="rgba(54,145,60,.8)"/><rect x="1" y="1" width="10" height="28" rx="2" fill="rgba(54,145,60,.35)" stroke="rgba(54,145,60,.8)"/><rect x="35" y="1" width="10" height="28" rx="2" fill="rgba(54,145,60,.35)" stroke="rgba(54,145,60,.8)"/><path d="M13 28 V12 H33 V28" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="4 3" stroke-linecap="round"/></svg>`;
+let VALD = null, DEMO = null;
+function platsLista(g, s) { return S.elever.filter(e => e.grupp === g && e.sida === s).sort((a, b) => a.plats - b.plats); }
+// Status per grupp: målet följer klassens storlek (n/4 avrundat ner eller upp), sidorna ⌈T/2⌉ + ⌊T/2⌋ (åt vilket håll som helst).
+function status() {
+  const E = S.elever, n = E.length, lo = Math.floor(n / 4), hi = Math.ceil(n / 4);
+  return [1, 2, 3, 4].map(g => {
+    const a = platsLista(g, 'A').length, b = platsLista(g, 'B').length, s = a + b;
+    const T = s > hi ? hi : s < lo ? lo : s, tA = Math.ceil(T / 2), tB = Math.floor(T / 2);
+    const sidorOk = (a === tA && b === tB) || (a === tB && b === tA);
+    const malA = sidorOk ? a : tA, malB = sidorOk ? b : tB;
+    return { g, a, b, s, T, malA, malB, grOk: s === T, ok: s === T && sidorOk };
+  });
+}
+function renderGrupper() {
+  const E = S.elever, valv = $('valv');
+  const fore = {}; valv.querySelectorAll('.tok[data-id]').forEach(c => fore[c.dataset.id] = c.getBoundingClientRect());
+  document.body.classList.toggle('hidekon', !S.visaKon);
+  const forsta = !S.visad; S.visad = true;
+  const st = status();
+  let idx = 0;
+  const tok = (e, over) => { const k = konAv(e) || 'okant'; const d = forsta && !REDUCERAD ? ` style="animation-delay:${200 + Math.min(idx++ * 22, 600)}ms"` : '';
+    return `<div class="tok${VALD === e.id ? ' sel' : ''}${forsta ? ' in' : ''}${over ? ' over' : ''}" data-id="${e.id}" tabindex="0"${d}><span class="kb ${k === 'okant' ? 'okant' : ''}">${BOK[k]}</span><span class="nm" title="${esc(e.namn)}">${esc(e.namn)}</span>${e.last ? '<span class="pin" title="Flyttad av dig">◆</span>' : ''}</div>`; };
+  valv.innerHTML = '<div class="vagg v"></div><div class="vagg h"></div><div class="pelare"></div>' + ['n', 'e', 's', 'w'].map(PORTAL).join('') +
+    st.map(x => { const g = x.g;
+      return `<div class="kvad ${KVADRANT[g]}" data-g="${g}"><div class="pod">
+        <div class="pod-h">${pix(GRUPPNAMN[g - 1])}<div><b>TESTGRUPP ${g}</b><small>${GRUPPNAMN[g - 1]}</small></div><span class="cnt ${x.grOk ? 'ok' : 'fel'}">${x.s}/${x.T}</span></div>
+        <div class="pod-st">börjar i ${STATIONER[g - 1]}</div>
+        <div class="konsol ${x.ok ? 'ok' : 'fel'}">${['A', 'B'].map(s => { const l = platsLista(g, s), mal = s === 'A' ? x.malA : x.malB;
+          return `<div class="sida ${s}" data-g="${g}" data-s="${s}"><div class="skarm">SIDA ${s}<i class="${l.length === mal ? '' : 'fel'}">${l.length}/${mal}</i></div>${
+            l.map((e, i) => `<div class="plats">${tok(e, i >= mal)}</div>`).join('')}${
+            Array.from({ length: Math.max(0, mal - l.length) }, () => '<div class="plats tom"></div>').join('')}</div>`; }).join('')}</div>
+      </div></div>`; }).join('');
+  if (!REDUCERAD) valv.querySelectorAll('.tok[data-id]').forEach(c => { const f = fore[c.dataset.id]; if (!f) return;
+    const t = c.getBoundingClientRect(), dx = f.left - t.left, dy = f.top - t.top; if (!dx && !dy) return;
+    c.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.77,0,.175,1)' }); });
+  // regeltext + vad som är fel
+  const n = E.length, z = storlekar(n), per = z.map(x => x.tot).sort((a, b) => b - a), lika = per.every(x => x === per[0]);
+  $('regel').textContent = !lika ? `GRUPPER ${per.join(' / ')}` : z[0].A === z[0].B ? `${per[0]} PER GRUPP · ${z[0].A} PER SIDA` : `${per[0]} PER GRUPP · ${z[0].A}+${z[0].B}`;
+  const v = [];
+  for (const x of st) {
+    const namn = `Testgrupp ${x.g} (${GRUPPNAMN[x.g - 1].toLowerCase()})`, d = x.s - x.T;
+    if (d > 0) v.push(`${namn} har ${x.s}, ${d === 1 ? 'en' : d} för många.`);
+    else if (d < 0) v.push(`${namn} har ${x.s}, ${d === -1 ? 'en' : -d} för få.`);
+    else if (!x.ok) v.push(`${namn}: ${x.a} på sida A och ${x.b} på sida B. Det ska vara ${Math.ceil(x.T / 2)} + ${Math.floor(x.T / 2)}.`);
+  }
+  if (n > 28) v.push(`${n} elever är fler än valvet tar i en körning. Hör av dig så delar vi klassen.`);
+  else if (z.some(x => x.A > 3)) v.push('Med så här många elever blir det fyra på någon sida. Det går, men tre per sida är bäst.');
+  if (n < 12) v.push('Färre än tre per grupp. Hör av dig så löser vi det.');
+  $('gvarn').innerHTML = v.map(t => `<p class="varn">${esc(t)}</p>`).join('');
+  const allaOk = st.every(x => x.ok);
+  $('tillKlar').disabled = !allaOk;
+  $('tillKlarInfo').textContent = allaOk ? '' : 'Alla ramar måste vara gröna.';
+  const pins = E.filter(e => e.last).length;
+  $('gsum').textContent = pins ? `${pins} flyttade ◆ ligger kvar` : '';
+  koppla();
+  if (forsta && !REDUCERAD) setTimeout(visaDemo, 1300);
+}
+const grupperOk = () => status().every(x => x.ok);
+// Flytta en elev till (grupp, sida), före eleven `fore` eller sist. Grupperna får bli för stora/små – ramen visar det.
+function flytta(id, g, s, fore) {
+  const e = byId(id); if (!e || fore === id) return;
+  const fg = e.grupp, fs = e.sida;
+  const l = platsLista(g, s).filter(x => x !== e);
+  let i = fore ? l.findIndex(x => x.id === fore) : l.length; if (i < 0) i = l.length;
+  e.grupp = g; e.sida = s; l.splice(i, 0, e); l.forEach((x, k) => x.plats = k);
+  if (fg !== g || fs !== s) platsLista(fg, fs).forEach((x, k) => x.plats = k);
+  e.last = true; S.sparad = false; VALD = null; renderGrupper();
+}
+// Pekarbaserad dra-och-släpp (mus + touch). Släpp var som helst i ett valv/på en sida = flytta dit. Klick + klick fungerar också.
+let DRAG = null, NYSS = false;
+function malUnder(x, y) {
+  const el = document.elementFromPoint(x, y); if (!el) return null;
+  const tok = el.closest('#valv .tok[data-id]'), sida = el.closest('#valv .sida');
+  if (sida) return { g: +sida.dataset.g, s: sida.dataset.s, fore: tok ? tok.dataset.id : null, el: sida };
+  const kv = el.closest('#valv .kvad'); if (!kv) return null;
+  const g = +kv.dataset.g, s = platsLista(g, 'A').length <= platsLista(g, 'B').length ? 'A' : 'B';
+  return { g, s, fore: null, el: kv.querySelector(`.sida.${s}`) };
+}
+function koppla() {
+  $('valv').querySelectorAll('.tok[data-id]').forEach(c => {
+    c.addEventListener('pointerdown', ev => { stoppaDemo(); if (DRAG || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      DRAG = { id: c.dataset.id, el: c, x: ev.clientX, y: ev.clientY, pid: ev.pointerId }; });
+    c.addEventListener('click', ev => { ev.stopPropagation(); if (NYSS) return;
+      if (VALD && VALD !== c.dataset.id) { const o = byId(c.dataset.id); flytta(VALD, o.grupp, o.sida, o.id); }
+      else { VALD = VALD === c.dataset.id ? null : c.dataset.id; renderGrupper(); } });
+    c.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); c.click(); } });
+  });
+  $('valv').querySelectorAll('.sida').forEach(sd => sd.addEventListener('click', () => { if (VALD && !NYSS) flytta(VALD, +sd.dataset.g, sd.dataset.s, null); }));
+}
+const rensaMal = () => document.querySelectorAll('#valv .sida.mal').forEach(p => p.classList.remove('mal'));
+document.addEventListener('pointermove', ev => {
+  if (!DRAG || ev.pointerId !== DRAG.pid) return;            // ett finger i taget
+  if (!DRAG.ghost) { if (Math.hypot(ev.clientX - DRAG.x, ev.clientY - DRAG.y) < 6) return;
+    const r = DRAG.el.getBoundingClientRect(); DRAG.r = r; DRAG.dx = ev.clientX - r.left; DRAG.dy = ev.clientY - r.top;
+    DRAG.ghost = DRAG.el.cloneNode(true); DRAG.ghost.classList.add('flyger'); DRAG.ghost.classList.remove('in', 'sel', 'over');
+    Object.assign(DRAG.ghost.style, { width: r.width + 'px', animation: 'none' });
+    document.body.appendChild(DRAG.ghost); DRAG.el.classList.add('borta'); }
+  DRAG.ghost.style.transform = `translate(${ev.clientX - DRAG.dx}px,${ev.clientY - DRAG.dy}px) scale(1.05) rotate(-1.5deg)`;
+  rensaMal(); const m = malUnder(ev.clientX, ev.clientY); if (m) m.el.classList.add('mal');
+});
+function slapp(ev) {
+  if (!DRAG || ev.pointerId !== DRAG.pid) return; const d = DRAG; DRAG = null; if (!d.ghost) return;
+  NYSS = true; setTimeout(() => NYSS = false, 0); rensaMal();
+  const m = ev.type === 'pointercancel' ? null : malUnder(ev.clientX, ev.clientY);
+  if (m && m.fore !== d.id) { d.ghost.remove(); flytta(d.id, m.g, m.s, m.fore); return; }
+  // inget mål: glid tillbaka till platsen (snabbt, ease-out)
+  const tillbaka = REDUCERAD ? null : d.ghost.animate([{ transform: d.ghost.style.transform }, { transform: `translate(${d.r.left}px,${d.r.top}px)` }], { duration: 200, easing: 'cubic-bezier(.23,1,.32,1)' });
+  const klar = () => { d.ghost.remove(); d.el.classList.remove('borta'); };
+  tillbaka ? tillbaka.finished.then(klar) : klar();
+}
+document.addEventListener('pointerup', slapp); document.addEventListener('pointercancel', slapp);
+
+/* ---- demo: en hand drar en elev från Mus till Katt; ramarna blir röda (7 och 5), sen tillbaka och gröna. Två varv, avbryts vid första tryck. ---- */
+const PEKARE = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="#05100b" stroke-width="1.2"><path d="M5 2l14 9.5-6.2 1.3 3.7 7.1-2.9 1.5-3.7-7.2L5 18.6z"/></svg>';
+function stoppaDemo() { if (!DEMO) return; DEMO.stopp = true; DEMO.el.forEach(x => x.remove()); DEMO.src.forEach(x => x.classList.remove('borta'));
+  DEMO.ramar.forEach(([k, c]) => k.className = c); DEMO = null; }
+async function visaDemo() {
+  if (S.skarm !== 2 || DEMO || DRAG || !grupperOk()) return;
+  const a = $('valv').querySelector('.k-tr .sida.A .tok'), sista = [...$('valv').querySelectorAll('.k-br .sida.B .tok')].pop();
+  const kA = $('valv').querySelector('.k-tr .konsol'), kB = $('valv').querySelector('.k-br .konsol');
+  if (!a || !sista) return;
+  const ra = a.getBoundingClientRect(), rs = sista.getBoundingClientRect();
+  const rb = { left: rs.left, top: rs.bottom + 6, width: rs.width, height: rs.height };
+  if (ra.bottom < 0 || rb.top + rb.height > innerHeight) return;    // syns inte – hoppa över
+  const ka = a.cloneNode(true); ka.classList.add('flyger'); ka.classList.remove('in', 'sel');
+  Object.assign(ka.style, { width: ra.width + 'px', animation: 'none', transform: `translate(${ra.left}px,${ra.top}px)` }); document.body.appendChild(ka);
+  const hand = document.createElement('div'); hand.className = 'pekare'; hand.innerHTML = PEKARE; document.body.appendChild(hand);
+  const txt = document.createElement('div'); txt.className = 'demotext'; document.body.appendChild(txt);
+  DEMO = { el: [ka, hand, txt], src: [a], stopp: false, ramar: [[kA, kA.className], [kB, kB.className]] };
+  a.classList.add('borta');
+  const T = (x, y, s = '') => `translate(${x}px,${y}px)${s}`, IO = 'cubic-bezier(.77,0,.175,1)', LYFT = ' scale(1.06) rotate(-1.5deg)';
+  const ax = ra.left, ay = ra.top, bx = rb.left, by = rb.top, hx = r => r.left + r.width * .55, hy = r => r.top + r.height * .55;
+  const opt = (d, e = IO) => ({ duration: d, easing: e, fill: 'forwards' });
+  const vanta = ms => new Promise(r => setTimeout(r, ms)), slut = () => !DEMO || DEMO.stopp;
+  const ram = (k, c) => { k.classList.remove('ok', 'fel'); k.classList.add(c); };
+  try {
+    for (let varv = 0; varv < 2 && !slut(); varv++) {
+      txt.textContent = 'DRA DIT DU VILL';
+      await Promise.all([
+        hand.animate([{ transform: T(hx(ra) + 60, hy(ra) + 70), opacity: 0 }, { transform: T(hx(ra), hy(ra)), opacity: 1 }], opt(450, 'cubic-bezier(.23,1,.32,1)')).finished,
+        txt.animate([{ transform: T(ax, ay - 34), opacity: 0 }, { transform: T(ax, ay - 34), opacity: 1 }], opt(300)).finished]);
+      if (slut()) break;
+      await ka.animate([{ transform: T(ax, ay) }, { transform: T(ax, ay, LYFT) }], opt(140, 'ease-out')).finished;
+      await Promise.all([
+        ka.animate([{ transform: T(ax, ay, LYFT) }, { transform: T(bx, by, LYFT) }], opt(900)).finished,
+        hand.animate([{ transform: T(hx(ra), hy(ra)) }, { transform: T(hx(rb), hy(rb)) }], opt(900)).finished,
+        txt.animate([{ transform: T(ax, ay - 34) }, { transform: T(bx, by - 34) }], opt(900)).finished]);
+      if (slut()) break;
+      await ka.animate([{ transform: T(bx, by, LYFT) }, { transform: T(bx, by) }], opt(120, 'ease-out')).finished;
+      ram(kA, 'fel'); ram(kB, 'fel'); txt.textContent = 'RÖD RAM = FEL ANTAL';
+      await vanta(1300); if (slut()) break;
+      txt.textContent = 'TILLBAKA = GRÖN';
+      await Promise.all([ka.animate([{ transform: T(bx, by) }, { transform: T(ax, ay) }], opt(600)).finished,
+        hand.animate([{ transform: T(hx(rb), hy(rb)) }, { transform: T(hx(ra), hy(ra)) }], opt(600)).finished,
+        txt.animate([{ transform: T(bx, by - 34) }, { transform: T(ax, ay - 34) }], opt(600)).finished]);
+      ram(kA, 'ok'); ram(kB, 'ok');
+      await vanta(900); if (slut()) break;
+      await Promise.all([hand.animate([{ opacity: 1 }, { opacity: 0 }], opt(250)).finished, txt.animate([{ opacity: 1 }, { opacity: 0 }], opt(250)).finished]);
+      await vanta(500);
+    }
+    if (!slut()) await ka.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).finished;
+  } catch (e) { /* avbruten */ }
+  stoppaDemo();
+}
+window.addEventListener('scroll', stoppaDemo, { passive: true });
+window.addEventListener('resize', stoppaDemo);
+
+/* ==================== KLAR: fil utan namn + utskrift med namn ==================== */
+function koder() {   // 2A1, 2A2 … per grupp/sida i bokstavsordning – står på lärarens utskrift, inte i filen ihop med namn
+  const m = {}; for (let g = 1; g <= 4; g++) for (const s of ['A', 'B'])
+    S.elever.filter(e => e.grupp === g && e.sida === s).sort((a, b) => a.namn.localeCompare(b.namn, 'sv')).forEach((e, i) => m[e.id] = `${g}${s}${i + 1}`);
+  return m; }
+function exportObj() {
+  const k = koder();
+  return { format: 'xy-klasslista', version: 2, skapad: new Date().toISOString(), verktyg: VERKTYG,
+    besok: { skola: S.besok.skola.trim(), klass: S.besok.klass.trim(), datum: S.besok.datum || null }, antal: S.elever.length,
+    platser: S.elever.map(e => ({ kod: k[e.id], grupp: e.grupp, sida: e.sida, kon: konAv(e) || 'okant' })).sort((a, b) => a.kod.localeCompare(b.kod)) };
+}
+const slug = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function spara() {
+  if (!S.besok.skola.trim()) { $('skola').focus(); toast('Fyll i skolans namn först.'); return; }
+  const blob = new Blob([JSON.stringify(exportObj(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `xy-${slug(S.besok.skola)}-${slug(S.besok.klass) || 'klass'}-${S.besok.datum || 'datum'}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  S.sparad = true; toast('Sparad. Skicka filen till oss och skriv ut grupplistan.');
+}
+function skrivUt() {
+  const k = koder(), b = S.besok;
+  $('print').innerHTML = `<h1>X&amp;Y · VALVET</h1><div>${esc(b.skola)} ${esc(b.klass)} ${esc(b.datum)} · grupplista, bara till läraren</div>
+    <div class="pg">${[1, 2, 3, 4].map(g => `<div class="pc"><h2>TESTGRUPP ${g}</h2><div>startar på ${STATIONER[g - 1]}</div>
+      ${['A', 'B'].map(s => `<h4>SIDA ${s}</h4><table>${S.elever.filter(e => e.grupp === g && e.sida === s).sort((x, y) => k[x.id].localeCompare(k[y.id]))
+        .map(e => `<tr><td>${k[e.id]}</td><td>${esc(e.namn)}</td></tr>`).join('')}</table>`).join('')}</div>`).join('')}</div>`;
+  window.print();
+}
+
+/* ==================== EXEMPEL + HÄNDELSER ==================== */
+const EXEMPEL = `Ella Andersson\nOmar Hassan\nWilma Lindqvist\nElias Berg\nSaga Nilsson\nElif Yilmaz\nHugo Johansson\nFatima Ali\nAlex Karlsson\nElla Svensson\nAbdi Mohamed\nAlma Ström\nLiam Eriksson\nLejla Begić\nNoah Larsson\nTuva Persson\nVilgot Gustafsson\nZahra Ahmadi\nCharlie Olsson\nSigne Holm\nMelker Nyström\nAino Korhonen\nIsak Dahl\nMaryam Haddad`;
+document.addEventListener('click', ev => { const g = ev.target.closest('[data-go]'); if (g) ga(+g.dataset.go); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && VALD) { VALD = null; renderGrupper(); } });
+const drop = $('drop');
+drop.onclick = () => $('fil').click();
+$('fil').onchange = e => { if (e.target.files[0]) lasFil(e.target.files[0]); e.target.value = ''; };
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) lasFil(f); });
+window.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
+window.addEventListener('drop', e => { if (e.dataTransfer?.files?.length && !drop.contains(e.target)) { e.preventDefault(); if (S.skarm === 0) lasFil(e.dataTransfer.files[0]); } });
+document.addEventListener('paste', ev => { if (S.skarm !== 0) return; const f = [...(ev.clipboardData?.files || [])].find(x => x.type.startsWith('image/')); if (f) { ev.preventDefault(); lasBild(f); } });
+$('visaKlistra').onclick = () => { $('klistraBox').hidden = false; $('klistra').focus(); };
+$('tolka').onclick = () => { const t = $('klistra').value; if (t.trim()) anvand(analysera(tabellFranText(t), 'inklistrat')); else $('klistra').focus(); };
+$('exempel').onclick = () => { S.besok = { skola: 'Exempelskolan', klass: '8B', datum: '' }; anvand(analysera(tabellFranText(EXEMPEL), 'exempel')); };
+$('allaBox').onchange = ev => { S.elever.forEach(e => { e.ok = ev.target.checked; if (e.ok) e.kon = e.kon || e.gissning || 'okant'; }); renderKontroll(); };
+$('godkann').onclick = () => { if (S.elever.some(e => !e.ok)) return; S.elever.forEach(e => { e.kon = konAv(e) || 'okant'; if (!e.last) { e.grupp = null; e.plats = null; } }); ga(2); };
+$('laggTill').onclick = () => { const v = $('nyElev').value.trim(); if (!v) return; const [fn, en] = delaHelnamn(v, 'fornamn_forst');
+  S.elever.push(nyElev({ fornamn: snygga(fn), efternamn: snygga(en) })); satVisningsnamn(); $('nyElev').value = ''; S.sparad = false; renderKontroll(); };
+$('nyElev').onkeydown = e => { if (e.key === 'Enter') $('laggTill').click(); };
+$('blanda').onclick = () => { forslag(); renderGrupper(); };
+$('visaKon').onchange = e => { S.visaKon = e.target.checked; renderGrupper(); };
+['skola', 'klass', 'datum'].forEach(k => $(k).addEventListener('input', e => S.besok[k] = e.target.value));
+$('spara').onclick = spara; $('skrivUt').onclick = skrivUt;
+window.addEventListener('beforeunload', e => { if (S.elever.length && !S.sparad) { e.preventDefault(); e.returnValue = ''; } });
+
+// Teletype på välkomstrubriken (en gång; inte vid reducerad rörelse)
+(function skriv() { if (REDUCERAD) return; const node = $('valkommen').firstChild, txt = node.textContent; node.textContent = '';
+  let i = 0; const t = setInterval(() => { node.textContent = txt.slice(0, ++i); if (i >= txt.length) clearInterval(t); }, 38); })();
+ga(0);
+</script>
+</body>
+</html>
